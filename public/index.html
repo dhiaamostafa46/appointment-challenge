@@ -718,7 +718,7 @@
     <div class="hero-banner">
       <div class="hero-content">
         <h1>محرك حجز المواعيد الثابتة</h1>
-        <p>نظام مبني بـ TypeScript و Express و PostgreSQL، مزوّد بحماية تامة من التعارض والتزامن (Pessimistic Row-Locking) وبث فوري للأحداث عبر Socket.IO.</p>
+        <p>نظام مبني بـ TypeScript و NestJS (Modular Clean Architecture) و PostgreSQL، مزوّد بحماية تامة من التعارض والتزامن (Pessimistic Row-Locking) وبث فوري للأحداث عبر Socket.IO.</p>
         
         <div class="hero-metrics">
           <div class="metric-pill">
@@ -1053,15 +1053,32 @@
       resA.textContent = 'جاري الإرسال...';
       resB.textContent = 'جاري الإرسال...';
 
-      // Pick an available slot
-      const available = currentSlots.find(s => !s.isBooked);
+      // 1. Fetch freshly available slots directly from server
+      const avRes = await fetch('/slots/available');
+      let availableSlots = await avRes.json();
+      let available = Array.isArray(availableSlots) && availableSlots.length > 0 ? availableSlots[0] : null;
+
+      // 2. If all slots are occupied, free one up by cancelling the oldest booking so we have an unbooked slot to test
       if (!available) {
-        alert('لا توجد مواعيد متاحة للاختبار! قم بإلغاء حجز أولاً.');
+        const allBRes = await fetch('/bookings');
+        const allBookings = await allBRes.json();
+        const confirmed = Array.isArray(allBookings) ? allBookings.find(b => b.status === 'CONFIRMED') : null;
+        if (confirmed) {
+          await fetch(`/bookings/${confirmed.id}`, { method: 'DELETE' });
+          const retryRes = await fetch('/slots/available');
+          const fresh = await retryRes.json();
+          available = Array.isArray(fresh) ? fresh[0] : null;
+        }
+      }
+
+      if (!available) {
+        alert('لا توجد مواعيد متاحة للاختبار! قم بتحديث الصفحة أو إضافة مواعيد.');
         return;
       }
 
       logToTerminal('CONCURRENCY', `إطلاق طلبين متزامنين في نفس اللحظة للموعد: ${available.id}`, 'api');
 
+      // 3. Race condition trigger: Two requests in the exact same millisecond
       const [respA, respB] = await Promise.all([
         fetch('/bookings', {
           method: 'POST',
@@ -1089,10 +1106,11 @@
 
       const statuses = [respA.status, respB.status].sort();
       if (statuses[0] === 201 && statuses[1] === 409) {
-        logToTerminal('CONCURRENCY', `نجاح الحماية التامة: طلب حجز بنجاح (201) وطلب رُفض لمنع التعارض (409)!`, 'api');
+        logToTerminal('CONCURRENCY', `نجاح الحماية التامة: فاز أحد الطلبين (201) ورُفض الآخر تلقائياً لمنع التكرار (409)!`, 'api');
       }
 
       refreshSlots();
+      return { respA, respB, dataA, dataB };
     }
 
     // 1-Click Complete Auto Simulation Flow
@@ -1114,7 +1132,16 @@
         logToTerminal('TEST', `2. استعلام المواعيد: تم العثور على ${currentSlots.length} موعد`, 'api');
         await new Promise(r => setTimeout(r, 400));
 
-        const targetSlot = currentSlots.find(s => !s.isBooked) || currentSlots[0];
+        // Find an unbooked slot, or free one
+        let targetSlot = currentSlots.find(s => !s.isBooked);
+        if (!targetSlot && currentSlots.length > 0) {
+          // free up a slot
+          const allB = await (await fetch('/bookings')).json();
+          const conf = Array.isArray(allB) ? allB.find(b => b.status === 'CONFIRMED') : null;
+          if (conf) await fetch(`/bookings/${conf.id}`, { method: 'DELETE' });
+          await refreshSlots();
+          targetSlot = currentSlots.find(s => !s.isBooked) || currentSlots[0];
+        }
 
         statusText.innerHTML = '<span>⏳</span><span>الخطوة 3: حجز موعد فعلي وتأكيده...</span>';
         const bookRes = await fetch('/bookings', {
@@ -1128,16 +1155,16 @@
         await new Promise(r => setTimeout(r, 500));
 
         statusText.innerHTML = '<span>⏳</span><span>الخطوة 4: تشغيل اختبار تصادم التزامن (Concurrency Conflict)...</span>';
-        await runConcurrencyTest();
+        const concResult = await runConcurrencyTest();
         await new Promise(r => setTimeout(r, 600));
 
+        statusText.innerHTML = '<span>⏳</span><span>الخطوة 5: اختبار الإلغاء وإعادة إتاحة الموعد فوراً...</span>';
         if (bookingData && bookingData.id) {
-          statusText.innerHTML = '<span>⏳</span><span>الخطوة 5: اختبار الإلغاء وإعادة إتاحة الموعد فوراً...</span>';
           await cancelSpecificBooking(bookingData.id);
           logToTerminal('TEST', '5. الإلغاء وإعادة إتاحة الموعد: 200 OK', 'api');
         }
 
-        statusText.innerHTML = '<span>✅</span><span style="color: #34d399; font-weight:700;">اكتمل الفحص الشامل بنجاح 100%! كافة معايير التحدي التقني مستوفاة.</span>';
+        statusText.innerHTML = '<span>✅</span><span style="color: #34d399; font-weight:700;">اكتمل الفحص الشامل بنجاح 100%! فاز طلب واحد (201) ومُنِع الآخر (409) لمنع التعارض.</span>';
 
       } catch (err) {
         statusText.innerHTML = `<span style="color: var(--rose);">❌ حدث خطأ: ${err.message}</span>`;

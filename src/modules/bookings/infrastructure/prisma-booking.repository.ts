@@ -14,8 +14,7 @@ import {
   IBookingRepository,
 } from '../domain/booking.repository';
 
-// In-memory fallback bookings
-const memoryBookings: BookingEntity[] = [];
+import { sharedMemoryStore } from '../../../prisma/memory-store';
 
 @Injectable()
 export class PrismaBookingRepository implements IBookingRepository {
@@ -88,33 +87,15 @@ export class PrismaBookingRepository implements IBookingRepository {
         throw err;
       }
 
-      // Memory fallback for local offline testing
-      const existing = memoryBookings.find(
-        (b) => b.slotId === data.slotId && b.status === BookingStatus.CONFIRMED
-      );
-      if (existing) {
+      // Synchronized fallback store
+      try {
+        return sharedMemoryStore.createBooking(data.slotId, data.clientName, data.clientEmail);
+      } catch (e: any) {
+        if (e.message && e.message.includes('not found')) {
+          throw new SlotNotFoundException(data.slotId);
+        }
         throw new SlotAlreadyBookedException(data.slotId);
       }
-
-      const entity = new BookingEntity(
-        crypto.randomUUID(),
-        data.slotId,
-        data.clientName,
-        data.clientEmail,
-        BookingStatus.CONFIRMED,
-        new Date(),
-        new Date(),
-        {
-          id: data.slotId,
-          startTime: new Date(),
-          endTime: new Date(Date.now() + 1800000),
-          isBooked: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-      );
-      memoryBookings.push(entity);
-      return entity;
     }
   }
 
@@ -180,21 +161,14 @@ export class PrismaBookingRepository implements IBookingRepository {
         throw err;
       }
 
-      const booking = memoryBookings.find((b) => b.id === id);
-      if (!booking) {
-        throw new BookingNotFoundException(id);
-      }
-      if (booking.status === BookingStatus.CANCELLED) {
+      try {
+        return sharedMemoryStore.cancelBooking(id);
+      } catch (e: any) {
+        if (e.message && e.message.includes('not found')) {
+          throw new BookingNotFoundException(id);
+        }
         throw new BookingAlreadyCancelledException(id);
       }
-
-      booking.status = BookingStatus.CANCELLED;
-      booking.updatedAt = new Date();
-      if (booking.slot) {
-        booking.slot.isBooked = false;
-        booking.slot.updatedAt = new Date();
-      }
-      return booking;
     }
   }
 
@@ -225,7 +199,7 @@ export class PrismaBookingRepository implements IBookingRepository {
           : undefined
       );
     } catch {
-      return memoryBookings.find((b) => b.id === id) || null;
+      return sharedMemoryStore.bookings.find((b) => b.id === id) || null;
     }
   }
 
@@ -258,7 +232,7 @@ export class PrismaBookingRepository implements IBookingRepository {
           )
       );
     } catch {
-      return [...memoryBookings];
+      return [...sharedMemoryStore.bookings];
     }
   }
 }
