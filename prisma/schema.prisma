@@ -8,32 +8,32 @@ generator client {
 }
 
 enum BookingStatus {
-  CONFIRMED
-  CANCELLED
+  active
+  cancelled
 }
 
 model Slot {
   id        String    @id @default(uuid())
-  startTime DateTime
-  endTime   DateTime
+  startsAt  DateTime
+  endsAt    DateTime
   isBooked  Boolean   @default(false)
   bookings  Booking[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  @@index([startTime])
+  @@index([startsAt])
   @@index([isBooked])
 }
 
 model Booking {
-  id          String        @id @default(uuid())
-  slotId      String
-  slot        Slot          @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  clientName  String
-  clientEmail String
-  status      BookingStatus @default(CONFIRMED)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id            String        @id @default(uuid())
+  slotId        String
+  slot          Slot          @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  customerName  String
+  customerEmail String
+  status        BookingStatus @default(active)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@index([slotId])
 }

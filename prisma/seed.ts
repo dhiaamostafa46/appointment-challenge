@@ -2,60 +2,89 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export async function main() {
+async function main() {
   console.log('Seeding fixed appointment slots...');
 
-  // Clean existing data for an idempotent seed
+  // Reset database safely
   await prisma.booking.deleteMany();
   await prisma.slot.deleteMany();
 
-  // Create standard 30-minute slots starting from tomorrow
-  const baseDate = new Date();
-  baseDate.setDate(baseDate.getDate() + 1);
-  baseDate.setHours(9, 0, 0, 0); // Tomorrow at 09:00 AM
-
-  const slotIntervals = [
-    { startHour: 9, startMin: 0, endHour: 9, endMin: 30 },
-    { startHour: 9, startMin: 30, endHour: 10, endMin: 0 },
-    { startHour: 10, startMin: 0, endHour: 10, endMin: 30 },
-    { startHour: 10, startMin: 30, endHour: 11, endMin: 0 },
-    { startHour: 11, startMin: 0, endHour: 11, endMin: 30 },
-    { startHour: 13, startMin: 0, endHour: 13, endMin: 30 },
-    { startHour: 13, startMin: 30, endHour: 14, endMin: 0 },
-    { startHour: 14, startMin: 0, endHour: 14, endMin: 30 },
-    { startHour: 14, startMin: 30, endHour: 15, endMin: 0 },
-    { startHour: 15, startMin: 0, endHour: 15, endMin: 30 },
+  // Predefined fixed 30-minute appointment slots with startsAt and endsAt
+  const fixedSlots = [
+    {
+      id: '11111111-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T09:00:00.000Z'),
+      endsAt: new Date('2030-01-15T09:30:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: '22222222-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T09:30:00.000Z'),
+      endsAt: new Date('2030-01-15T10:00:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: '33333333-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T10:00:00.000Z'),
+      endsAt: new Date('2030-01-15T10:30:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: '44444444-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T10:30:00.000Z'),
+      endsAt: new Date('2030-01-15T11:00:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: '55555555-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T11:00:00.000Z'),
+      endsAt: new Date('2030-01-15T11:30:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: '66666666-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T11:30:00.000Z'),
+      endsAt: new Date('2030-01-15T12:00:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: '77777777-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T13:00:00.000Z'),
+      endsAt: new Date('2030-01-15T13:30:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: '88888888-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T13:30:00.000Z'),
+      endsAt: new Date('2030-01-15T14:00:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: '99999999-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T14:00:00.000Z'),
+      endsAt: new Date('2030-01-15T14:30:00.000Z'),
+      isBooked: false,
+    },
+    {
+      id: 'aaaaaaaa-1111-4111-8111-111111111111',
+      startsAt: new Date('2030-01-15T14:30:00.000Z'),
+      endsAt: new Date('2030-01-15T15:00:00.000Z'),
+      isBooked: false,
+    },
   ];
 
-  const slotsData = slotIntervals.map(({ startHour, startMin, endHour, endMin }) => {
-    const startTime = new Date(baseDate);
-    startTime.setHours(startHour, startMin, 0, 0);
-
-    const endTime = new Date(baseDate);
-    endTime.setHours(endHour, endMin, 0, 0);
-
-    return {
-      startTime,
-      endTime,
-      isBooked: false,
-    };
-  });
-
   await prisma.slot.createMany({
-    data: slotsData,
+    data: fixedSlots,
   });
 
-  const count = await prisma.slot.count();
-  console.log(`Successfully seeded ${count} available appointment slots.`);
+  console.log(`Successfully seeded ${fixedSlots.length} available appointment slots.`);
 }
 
-if (require.main === module) {
-  main()
-    .catch((e) => {
-      console.error('Seed failed:', e);
-      process.exit(1);
-    })
-    .finally(async () => {
-      await prisma.$disconnect();
-    });
-}
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

@@ -5,42 +5,50 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { BookingEntity } from '../domain/booking.entity';
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({
+  cors: {
+    origin: '*',
+  },
+})
 export class BookingsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
   handleConnection(client: Socket) {
-    console.log(`[Socket.IO] Client connected: ${client.id}`);
+    // Client connected
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`[Socket.IO] Client disconnected: ${client.id}`);
+    // Client disconnected
   }
 
-  emitBookingCreated(booking: BookingEntity) {
+  /**
+   * Broadcasted when a slot is successfully booked.
+   * Payload complies strictly with challenge specification (no customer data):
+   * { slotId, bookingId, available: false }
+   */
+  emitSlotBooked(slotId: string, bookingId: string): void {
     if (this.server) {
-      this.server.emit('booking:created', booking);
-      this.server.emit('slot:booked', {
-        slotId: booking.slotId,
-        bookingId: booking.id,
-        timestamp: new Date().toISOString(),
+      this.server.emit('slot.booked', {
+        slotId,
+        bookingId,
+        available: false,
       });
     }
   }
 
-  emitBookingCancelled(booking: BookingEntity) {
+  /**
+   * Broadcasted when an active booking is cancelled.
+   * Payload complies strictly with challenge specification (no customer data):
+   * { slotId, bookingId, available: true }
+   */
+  emitSlotReleased(slotId: string, bookingId: string): void {
     if (this.server) {
-      this.server.emit('booking:cancelled', {
-        id: booking.id,
-        slotId: booking.slotId,
-        timestamp: new Date().toISOString(),
-      });
-      this.server.emit('slot:available', {
-        slotId: booking.slotId,
-        timestamp: new Date().toISOString(),
+      this.server.emit('slot.released', {
+        slotId,
+        bookingId,
+        available: true,
       });
     }
   }

@@ -1,38 +1,58 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { GetAvailableSlotsUseCase } from '../application/use-cases/get-available-slots.use-case';
-import { GetSlotByIdUseCase } from '../application/use-cases/get-slot-by-id.use-case';
 
 @ApiTags('Slots')
 @Controller('slots')
 export class SlotsController {
-  constructor(
-    private readonly getAvailableSlotsUseCase: GetAvailableSlotsUseCase,
-    private readonly getSlotByIdUseCase: GetSlotByIdUseCase
-  ) {}
-
-  @Get('available')
-  @ApiOperation({ summary: 'List available slots', description: 'Returns all currently available (unbooked) appointment slots.' })
-  @ApiResponse({ status: 200, description: 'List of available appointment slots' })
-  async getAvailable() {
-    return this.getAvailableSlotsUseCase.execute({ availableOnly: true });
-  }
+  constructor(private readonly getAvailableSlotsUseCase: GetAvailableSlotsUseCase) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all fixed appointment slots', description: 'Returns all slots, optionally filtered by availability.' })
-  @ApiQuery({ name: 'available', required: false, type: Boolean, description: 'Filter by availability' })
-  @ApiResponse({ status: 200, description: 'List of appointment slots' })
-  async getAll(@Query('available') available?: string) {
-    const availableOnly = available === 'true';
-    return this.getAvailableSlotsUseCase.execute({ availableOnly });
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Get slot by ID', description: 'Retrieve slot details along with confirmed booking if any.' })
-  @ApiParam({ name: 'id', description: 'Slot UUID' })
-  @ApiResponse({ status: 200, description: 'Slot found' })
-  @ApiResponse({ status: 404, description: 'Slot not found' })
-  async getById(@Param('id') id: string) {
-    return this.getSlotByIdUseCase.execute(id);
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List available appointment slots',
+    description:
+      'Returns only available (unbooked) slots sorted ascending by startsAt then id. Returns {"slots": []} if none are available.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of available appointment slots',
+    schema: {
+      type: 'object',
+      properties: {
+        slots: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid', example: '11111111-1111-4111-8111-111111111111' },
+              startsAt: { type: 'string', format: 'date-time', example: '2030-01-15T09:00:00.000Z' },
+              endsAt: { type: 'string', format: 'date-time', example: '2030-01-15T09:30:00.000Z' },
+            },
+          },
+        },
+      },
+      example: {
+        slots: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            startsAt: '2030-01-15T09:00:00.000Z',
+            endsAt: '2030-01-15T09:30:00.000Z',
+          },
+        ],
+      },
+    },
+  })
+  async listAvailableSlots(): Promise<{
+    slots: Array<{ id: string; startsAt: Date; endsAt: Date }>;
+  }> {
+    const slots = await this.getAvailableSlotsUseCase.execute();
+    return {
+      slots: slots.map((s) => ({
+        id: s.id,
+        startsAt: s.startsAt,
+        endsAt: s.endsAt,
+      })),
+    };
   }
 }

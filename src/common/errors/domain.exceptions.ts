@@ -1,40 +1,34 @@
-/**
- * -----------------------------------------------------------------------------
- * أخطاء نطاق العمل (Domain Exceptions)
- * -----------------------------------------------------------------------------
- * استثناءات نقية ومجردة من أي تفاصيل HTTP أو Prisma.
- * يتم إطلاقها داخل الـ Domain أو الـ Use Cases، ويقوم GlobalHttpExceptionFilter
- * بتحويل كل خطأ إلى كود الحالة (HTTP Status Code) المناسب.
- */
+export class DomainException extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly statusCode: number = 400
+  ) {
+    super(message);
+    this.name = this.constructor.name;
+  }
+}
 
-/** خطأ: الموعد المطلوب غير موجود في النظام (ينتج عنه 404 Not Found) */
-export class SlotNotFoundException extends Error {
+export class SlotNotFoundException extends DomainException {
   constructor(slotId: string) {
-    super(`Slot with ID '${slotId}' was not found`);
-    this.name = 'SlotNotFoundException';
+    super('SLOT_NOT_FOUND', `Slot with ID '${slotId}' was not found`, 404);
   }
 }
 
-/** خطأ: الموعد محجوز مسبقاً من قِبل عميل آخر (ينتج عنه 409 Conflict) */
-export class SlotAlreadyBookedException extends Error {
-  constructor(slotId: string) {
-    super(`Slot '${slotId}' is already booked`);
-    this.name = 'SlotAlreadyBookedException';
+export class SlotUnavailableException extends DomainException {
+  constructor(message = 'This slot already has an active booking.') {
+    super('SLOT_UNAVAILABLE', message, 409);
   }
 }
 
-/** خطأ: الحجز المطلوب غير موجود (ينتج عنه 404 Not Found) */
-export class BookingNotFoundException extends Error {
+export class BookingNotFoundException extends DomainException {
   constructor(bookingId: string) {
-    super(`Booking with ID '${bookingId}' was not found`);
-    this.name = 'BookingNotFoundException';
+    super('BOOKING_NOT_FOUND', `Booking with ID '${bookingId}' was not found`, 404);
   }
 }
 
-/** خطأ: الحجز تم إلغاؤه مسبقاً (ينتج عنه 400 Bad Request) */
-export class BookingAlreadyCancelledException extends Error {
-  constructor(bookingId: string) {
-    super(`Booking '${bookingId}' has already been cancelled`);
-    this.name = 'BookingAlreadyCancelledException';
+export class ValidationException extends DomainException {
+  constructor(message = 'Validation failed') {
+    super('VALIDATION_ERROR', message, 400);
   }
 }

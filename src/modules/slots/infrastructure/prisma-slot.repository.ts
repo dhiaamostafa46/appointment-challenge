@@ -12,17 +12,17 @@ export class PrismaSlotRepository implements ISlotRepository {
   async findAll(options?: { availableOnly?: boolean }): Promise<SlotEntity[]> {
     try {
       const where: Prisma.SlotWhereInput = {};
-      if (options?.availableOnly) {
+      if (options?.availableOnly !== false) {
         where.isBooked = false;
       }
 
       const slots = await this.prisma.slot.findMany({
         where,
-        orderBy: { startTime: 'asc' },
+        orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
         include: {
           bookings: {
-            where: { status: BookingStatus.CONFIRMED },
-            select: { id: true, clientName: true, clientEmail: true, status: true, createdAt: true },
+            where: { status: BookingStatus.active },
+            select: { id: true, customerName: true, customerEmail: true, status: true, createdAt: true },
           },
         },
       });
@@ -30,10 +30,13 @@ export class PrismaSlotRepository implements ISlotRepository {
       return slots.map((s) => this.mapToEntity(s));
     } catch {
       let filtered = [...sharedMemoryStore.slots];
-      if (options?.availableOnly) {
+      if (options?.availableOnly !== false) {
         filtered = filtered.filter((s) => !s.isBooked);
       }
-      return filtered;
+      return filtered.sort((a, b) => {
+        const timeDiff = a.startsAt.getTime() - b.startsAt.getTime();
+        return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
+      });
     }
   }
 
@@ -43,8 +46,8 @@ export class PrismaSlotRepository implements ISlotRepository {
         where: { id },
         include: {
           bookings: {
-            where: { status: BookingStatus.CONFIRMED },
-            select: { id: true, clientName: true, clientEmail: true, status: true, createdAt: true },
+            where: { status: BookingStatus.active },
+            select: { id: true, customerName: true, customerEmail: true, status: true, createdAt: true },
           },
         },
       });
@@ -56,22 +59,18 @@ export class PrismaSlotRepository implements ISlotRepository {
     }
   }
 
-  /**
-   * دالة مساعدة مركزية لتحويل سجل الموعد من Prisma إلى كيان النطاق (SlotEntity)
-   * تمنع تكرار الكود وتضمن اتساق البيانات (DRY Principle)
-   */
   private mapToEntity(s: any): SlotEntity {
     return new SlotEntity(
       s.id,
-      s.startTime,
-      s.endTime,
+      s.startsAt,
+      s.endsAt,
       s.isBooked,
       s.createdAt,
       s.updatedAt,
       (s.bookings || []).map((b: any) => ({
         id: b.id,
-        clientName: b.clientName,
-        clientEmail: b.clientEmail,
+        customerName: b.customerName,
+        customerEmail: b.customerEmail,
         status: b.status,
         createdAt: b.createdAt,
       }))

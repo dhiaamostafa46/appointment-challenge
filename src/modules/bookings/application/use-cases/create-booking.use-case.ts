@@ -16,8 +16,15 @@ export class CreateBookingUseCase {
   ) {}
 
   async execute(data: CreateBookingData): Promise<BookingEntity> {
-    const booking = await this.bookingRepository.createWithConcurrencyLock(data);
-    this.bookingsGateway.emitBookingCreated(booking);
+    const booking = await this.bookingRepository.createWithConcurrencyLock({
+      slotId: data.slotId.trim(),
+      customerName: data.customerName.trim(),
+      customerEmail: data.customerEmail.trim(),
+    });
+
+    // Broadcast real-time slot.booked event (only on success, no customer info)
+    this.bookingsGateway.emitSlotBooked(booking.slotId, booking.id);
+
     return booking;
   }
 }

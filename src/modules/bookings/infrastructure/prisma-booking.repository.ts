@@ -3,10 +3,9 @@ import { BookingStatus as PrismaBookingStatus, Prisma, Slot } from '@prisma/clie
 import { PrismaService } from '../../../prisma/prisma.service';
 import { BookingEntity, BookingStatus } from '../domain/booking.entity';
 import {
-  BookingAlreadyCancelledException,
   BookingNotFoundException,
-  SlotAlreadyBookedException,
   SlotNotFoundException,
+  SlotUnavailableException,
 } from '../../../common/errors/domain.exceptions';
 import {
   CreateBookingData,
@@ -33,7 +32,7 @@ export class PrismaBookingRepository implements IBookingRepository {
           }
 
           if (slot.isBooked) {
-            throw new SlotAlreadyBookedException(data.slotId);
+            throw new SlotUnavailableException();
           }
 
           // 2. Mark the slot as booked
@@ -42,13 +41,13 @@ export class PrismaBookingRepository implements IBookingRepository {
             data: { isBooked: true },
           });
 
-          // 3. Create confirmed booking record
+          // 3. Create confirmed active booking record
           const booking = await tx.booking.create({
             data: {
               slotId: data.slotId,
-              clientName: data.clientName,
-              clientEmail: data.clientEmail,
-              status: PrismaBookingStatus.CONFIRMED,
+              customerName: data.customerName,
+              customerEmail: data.customerEmail,
+              status: PrismaBookingStatus.active,
             },
             include: {
               slot: true,
@@ -62,24 +61,24 @@ export class PrismaBookingRepository implements IBookingRepository {
     } catch (err: any) {
       if (
         err instanceof SlotNotFoundException ||
-        err instanceof SlotAlreadyBookedException
+        err instanceof SlotUnavailableException
       ) {
         throw err;
       }
 
-      // Synchronized fallback store
+      // Memory fallback for offline testing
       try {
-        return sharedMemoryStore.createBooking(data.slotId, data.clientName, data.clientEmail);
+        return sharedMemoryStore.createBooking(data.slotId, data.customerName, data.customerEmail);
       } catch (e: any) {
-        if (e.message && e.message.includes('not found')) {
+        if (e.message && e.message.includes('SLOT_NOT_FOUND')) {
           throw new SlotNotFoundException(data.slotId);
         }
-        throw new SlotAlreadyBookedException(data.slotId);
+        throw new SlotUnavailableException();
       }
     }
   }
 
-  async cancel(id: string): Promise<BookingEntity> {
+  async cancel(id: string): Promise<{ booking: BookingEntity; isFirstCancel: boolean }> {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
@@ -94,14 +93,22 @@ export class PrismaBookingRepository implements IBookingRepository {
             throw new BookingNotFoundException(id);
           }
 
-          if (booking.status === PrismaBookingStatus.CANCELLED) {
-            throw new BookingAlreadyCancelledException(id);
+          // Idempotent cancellation: already cancelled -> return 200 without change
+          if (booking.status === PrismaBookingStatus.cancelled) {
+            const existing = await tx.booking.findUnique({
+              where: { id },
+              include: { slot: true },
+            });
+            return {
+              booking: this.mapToEntity(existing),
+              isFirstCancel: false,
+            };
           }
 
-          // Update booking to CANCELLED
+          // Update booking to cancelled
           const updated = await tx.booking.update({
             where: { id },
-            data: { status: PrismaBookingStatus.CANCELLED },
+            data: { status: PrismaBookingStatus.cancelled },
             include: { slot: true },
           });
 
@@ -111,25 +118,25 @@ export class PrismaBookingRepository implements IBookingRepository {
             data: { isBooked: false },
           });
 
-          return this.mapToEntity(updated);
+          return {
+            booking: this.mapToEntity(updated),
+            isFirstCancel: true,
+          };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );
     } catch (err: any) {
-      if (
-        err instanceof BookingNotFoundException ||
-        err instanceof BookingAlreadyCancelledException
-      ) {
+      if (err instanceof BookingNotFoundException) {
         throw err;
       }
 
       try {
         return sharedMemoryStore.cancelBooking(id);
       } catch (e: any) {
-        if (e.message && e.message.includes('not found')) {
+        if (e.message && e.message.includes('BOOKING_NOT_FOUND')) {
           throw new BookingNotFoundException(id);
         }
-        throw new BookingAlreadyCancelledException(id);
+        throw e;
       }
     }
   }
@@ -158,24 +165,20 @@ export class PrismaBookingRepository implements IBookingRepository {
     }
   }
 
-  /**
-   * دالة مساعدة مركزية لتحويل سجل الحجز من Prisma إلى كيان النطاق (BookingEntity)
-   * تمنع تكرار الكود وتضمن معالجة متسقة لجميع الحقول وعلاقة الموعد (DRY Principle)
-   */
   private mapToEntity(b: any): BookingEntity {
     return new BookingEntity(
       b.id,
       b.slotId,
-      b.clientName,
-      b.clientEmail,
+      b.customerName,
+      b.customerEmail,
       b.status as BookingStatus,
       b.createdAt,
       b.updatedAt,
       b.slot
         ? {
             id: b.slot.id,
-            startTime: b.slot.startTime,
-            endTime: b.slot.endTime,
+            startsAt: b.slot.startsAt,
+            endsAt: b.slot.endsAt,
             isBooked: b.slot.isBooked,
             createdAt: b.slot.createdAt,
             updatedAt: b.slot.updatedAt,

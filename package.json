@@ -11,7 +11,8 @@
     "seed": "prisma db seed",
     "test": "jest tests/validation.test.ts tests/booking.test.ts --runInBand",
     "test:unit": "jest tests/validation.test.ts --runInBand",
-    "test:integration": "prisma migrate deploy && prisma db seed && jest tests/booking.test.ts --runInBand"
+    "test:integration": "prisma migrate deploy && prisma db seed && jest tests/booking.test.ts --runInBand",
+    "test:socket": "ts-node scripts/test-socket.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -45,6 +46,7 @@
     "jest": "^29.0.0",
     "pg-mem": "^3.0.14",
     "prisma": "^4.15.0",
+    "socket.io-client": "^4.8.4",
     "supertest": "^6.3.3",
     "ts-jest": "^29.0.0",
     "ts-node": "^10.9.1",

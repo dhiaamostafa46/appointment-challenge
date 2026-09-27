@@ -23,16 +23,15 @@ export async function bootstrap() {
   // Serve Interactive Dashboard
   app.useStaticAssets(path.resolve(process.cwd(), 'public'));
 
-  // OpenAPI Swagger Documentation Setup
+  // OpenAPI Swagger Documentation Setup (Exact Challenge Specification)
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Fixed-Slot Appointment Booking API')
     .setDescription(
-      'Modular Clean Architecture API for fixed-slot appointment bookings with PostgreSQL row-level locks (SELECT ... FOR UPDATE), Socket.IO real-time events, and Swagger documentation.'
+      'RESTful API for fixed-slot appointment booking with strict concurrency conflict prevention, PostgreSQL row-level locks, and Socket.IO real-time events. No authentication required.'
     )
     .setVersion('1.0.0')
-    .addTag('Slots', 'Fixed appointment slots operations')
-    .addTag('Bookings', 'Slot reservations and cancellation operations')
-    .addTag('Health', 'System status checks')
+    .addTag('Slots', 'Query available appointment slots (GET /slots)')
+    .addTag('Bookings', 'Slot reservation (POST /bookings) and cancellation (DELETE /bookings/{bookingId})')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

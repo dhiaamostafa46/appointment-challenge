@@ -2,13 +2,6 @@ import crypto from 'crypto';
 import { SlotEntity } from '../modules/slots/domain/slot.entity';
 import { BookingEntity, BookingStatus } from '../modules/bookings/domain/booking.entity';
 
-/**
- * -----------------------------------------------------------------------------
- * مخزن الذاكرة المشترك (Shared In-Memory Store)
- * -----------------------------------------------------------------------------
- * يُستخدم كبديل آمن ومتزامن في بيئة التطوير المحلية عند عدم توفر اتصال بـ PostgreSQL.
- * يضمن مزامنة حالة المواعيد (isBooked) وحالات الحجز (CONFIRMED / CANCELLED) بدقة 100%.
- */
 class MemoryStore {
   public slots: SlotEntity[] = [];
   public bookings: BookingEntity[] = [];
@@ -18,14 +11,23 @@ class MemoryStore {
   }
 
   public reset(): void {
-    const now = new Date();
-    this.slots = [
-      new SlotEntity('4a2f8b50-3a1b-4f9e-9d22-123456789abc', new Date(now.getTime() + 3600000), new Date(now.getTime() + 5400000), false, now, now, []),
-      new SlotEntity('50b8d218-efff-4677-833f-c443d42c5299', new Date(now.getTime() + 5400000), new Date(now.getTime() + 7200000), false, now, now, []),
-      new SlotEntity('3af1825c-d7bf-45b8-b4c9-0231ddf61232', new Date(now.getTime() + 7200000), new Date(now.getTime() + 9000000), false, now, now, []),
-      new SlotEntity('f49ee491-ed23-4c7d-89e1-f8c6a9a403a5', new Date(now.getTime() + 9000000), new Date(now.getTime() + 10800000), false, now, now, []),
-      new SlotEntity('fb5a96e6-c558-4fa6-9000-e0bc2174f72f', new Date(now.getTime() + 10800000), new Date(now.getTime() + 12600000), false, now, now, []),
+    const fixedSlotsData = [
+      { id: '11111111-1111-4111-8111-111111111111', startsAt: '2030-01-15T09:00:00.000Z', endsAt: '2030-01-15T09:30:00.000Z' },
+      { id: '22222222-1111-4111-8111-111111111111', startsAt: '2030-01-15T09:30:00.000Z', endsAt: '2030-01-15T10:00:00.000Z' },
+      { id: '33333333-1111-4111-8111-111111111111', startsAt: '2030-01-15T10:00:00.000Z', endsAt: '2030-01-15T10:30:00.000Z' },
+      { id: '44444444-1111-4111-8111-111111111111', startsAt: '2030-01-15T10:30:00.000Z', endsAt: '2030-01-15T11:00:00.000Z' },
+      { id: '55555555-1111-4111-8111-111111111111', startsAt: '2030-01-15T11:00:00.000Z', endsAt: '2030-01-15T11:30:00.000Z' },
+      { id: '66666666-1111-4111-8111-111111111111', startsAt: '2030-01-15T11:30:00.000Z', endsAt: '2030-01-15T12:00:00.000Z' },
+      { id: '77777777-1111-4111-8111-111111111111', startsAt: '2030-01-15T13:00:00.000Z', endsAt: '2030-01-15T13:30:00.000Z' },
+      { id: '88888888-1111-4111-8111-111111111111', startsAt: '2030-01-15T13:30:00.000Z', endsAt: '2030-01-15T14:00:00.000Z' },
+      { id: '99999999-1111-4111-8111-111111111111', startsAt: '2030-01-15T14:00:00.000Z', endsAt: '2030-01-15T14:30:00.000Z' },
+      { id: 'aaaaaaaa-1111-4111-8111-111111111111', startsAt: '2030-01-15T14:30:00.000Z', endsAt: '2030-01-15T15:00:00.000Z' },
     ];
+
+    const now = new Date();
+    this.slots = fixedSlotsData.map(
+      (s) => new SlotEntity(s.id, new Date(s.startsAt), new Date(s.endsAt), false, now, now, [])
+    );
     this.bookings = [];
   }
 
@@ -34,34 +36,38 @@ class MemoryStore {
   }
 
   public getAvailableSlots(): SlotEntity[] {
-    return this.slots.filter((s) => !s.isBooked);
+    return this.slots
+      .filter((s) => !s.isBooked)
+      .sort((a, b) => {
+        const timeDiff = a.startsAt.getTime() - b.startsAt.getTime();
+        return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
+      });
   }
 
-  public createBooking(slotId: string, clientName: string, clientEmail: string): BookingEntity {
+  public createBooking(slotId: string, customerName: string, customerEmail: string): BookingEntity {
     const slot = this.findSlot(slotId);
     if (!slot) {
-      throw new Error(`Slot with ID '${slotId}' was not found`);
+      throw new Error(`SLOT_NOT_FOUND: Slot with ID '${slotId}' was not found`);
     }
     if (slot.isBooked) {
-      throw new Error(`Slot '${slotId}' is already booked`);
+      throw new Error(`SLOT_UNAVAILABLE: This slot already has an active booking.`);
     }
 
-    // Atomic lock in memory
     slot.isBooked = true;
     slot.updatedAt = new Date();
 
     const booking = new BookingEntity(
       crypto.randomUUID(),
       slotId,
-      clientName,
-      clientEmail,
-      BookingStatus.CONFIRMED,
+      customerName,
+      customerEmail,
+      BookingStatus.active,
       new Date(),
       new Date(),
       {
         id: slot.id,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
         isBooked: true,
         createdAt: slot.createdAt,
         updatedAt: slot.updatedAt,
@@ -71,8 +77,8 @@ class MemoryStore {
     slot.bookings = [
       {
         id: booking.id,
-        clientName: booking.clientName,
-        clientEmail: booking.clientEmail,
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
         status: booking.status,
         createdAt: booking.createdAt,
       },
@@ -82,26 +88,28 @@ class MemoryStore {
     return booking;
   }
 
-  public cancelBooking(bookingId: string): BookingEntity {
+  public cancelBooking(bookingId: string): { booking: BookingEntity; isFirstCancel: boolean } {
     const booking = this.bookings.find((b) => b.id === bookingId);
     if (!booking) {
-      throw new Error(`Booking with ID '${bookingId}' was not found`);
-    }
-    if (booking.status === BookingStatus.CANCELLED) {
-      throw new Error(`Booking '${bookingId}' has already been cancelled`);
+      throw new Error(`BOOKING_NOT_FOUND: Booking with ID '${bookingId}' was not found`);
     }
 
-    booking.status = BookingStatus.CANCELLED;
+    // Idempotent cancellation: if already cancelled, return 200 without change
+    if (booking.status === BookingStatus.cancelled) {
+      return { booking, isFirstCancel: false };
+    }
+
+    booking.status = BookingStatus.cancelled;
     booking.updatedAt = new Date();
 
     const slot = this.findSlot(booking.slotId);
     if (slot) {
       slot.isBooked = false;
       slot.updatedAt = new Date();
-      slot.bookings = slot.bookings.filter((b) => b.id !== bookingId);
+      slot.bookings = (slot.bookings || []).filter((b) => b.id !== bookingId);
     }
 
-    return booking;
+    return { booking, isFirstCancel: true };
   }
 }
 

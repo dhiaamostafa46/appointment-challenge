@@ -1,29 +1,31 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, Length } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsEmail, IsNotEmpty, IsString, IsUUID } from 'class-validator';
 
 export class CreateBookingDto {
   @ApiProperty({
-    description: 'UUID of the slot to reserve',
-    example: '4a2f8b50-3a1b-4f9e-9d22-123456789abc',
+    description: 'Valid UUID of the available slot to book',
+    example: '11111111-1111-4111-8111-111111111111',
   })
-  @IsString()
-  @IsNotEmpty({ message: 'slotId is required and must be a non-empty string' })
+  @IsUUID(undefined, { message: 'slotId must be a valid UUID' })
+  @IsNotEmpty({ message: 'slotId is required' })
   slotId!: string;
 
   @ApiProperty({
-    description: 'Full name of the client',
-    example: 'Ahmed Al-Mansoor',
-    minLength: 2,
-    maxLength: 100,
+    description: 'Full name of the customer (trimmed before validation)',
+    example: 'Alex Morgan',
   })
-  @IsString()
-  @Length(2, 100, { message: 'clientName must be between 2 and 100 characters' })
-  clientName!: string;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString({ message: 'customerName must be a string' })
+  @IsNotEmpty({ message: 'customerName cannot be empty' })
+  customerName!: string;
 
   @ApiProperty({
-    description: 'Valid contact email address',
-    example: 'ahmed@example.com',
+    description: 'Valid contact email address of the customer (trimmed before validation)',
+    example: 'alex@example.com',
   })
-  @IsEmail({}, { message: 'clientEmail must be a valid email address' })
-  clientEmail!: string;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsEmail({}, { message: 'customerEmail must be a valid email address' })
+  @IsNotEmpty({ message: 'customerEmail is required' })
+  customerEmail!: string;
 }
