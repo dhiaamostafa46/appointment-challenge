@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { BookingStatus as PrismaBookingStatus, Prisma, Slot } from '@prisma/client';
-import crypto from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { BookingEntity, BookingStatus } from '../domain/booking.entity';
 import {
@@ -13,7 +12,6 @@ import {
   CreateBookingData,
   IBookingRepository,
 } from '../domain/booking.repository';
-
 import { sharedMemoryStore } from '../../../prisma/memory-store';
 
 @Injectable()
@@ -57,25 +55,7 @@ export class PrismaBookingRepository implements IBookingRepository {
             },
           });
 
-          return new BookingEntity(
-            booking.id,
-            booking.slotId,
-            booking.clientName,
-            booking.clientEmail,
-            BookingStatus.CONFIRMED,
-            booking.createdAt,
-            booking.updatedAt,
-            booking.slot
-              ? {
-                  id: booking.slot.id,
-                  startTime: booking.slot.startTime,
-                  endTime: booking.slot.endTime,
-                  isBooked: booking.slot.isBooked,
-                  createdAt: booking.slot.createdAt,
-                  updatedAt: booking.slot.updatedAt,
-                }
-              : undefined
-          );
+          return this.mapToEntity(booking);
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );
@@ -131,25 +111,7 @@ export class PrismaBookingRepository implements IBookingRepository {
             data: { isBooked: false },
           });
 
-          return new BookingEntity(
-            updated.id,
-            updated.slotId,
-            updated.clientName,
-            updated.clientEmail,
-            BookingStatus.CANCELLED,
-            updated.createdAt,
-            updated.updatedAt,
-            updated.slot
-              ? {
-                  id: updated.slot.id,
-                  startTime: updated.slot.startTime,
-                  endTime: updated.slot.endTime,
-                  isBooked: updated.slot.isBooked,
-                  createdAt: updated.slot.createdAt,
-                  updatedAt: updated.slot.updatedAt,
-                }
-              : undefined
-          );
+          return this.mapToEntity(updated);
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );
@@ -178,26 +140,7 @@ export class PrismaBookingRepository implements IBookingRepository {
         where: { id },
         include: { slot: true },
       });
-      if (!booking) return null;
-      return new BookingEntity(
-        booking.id,
-        booking.slotId,
-        booking.clientName,
-        booking.clientEmail,
-        booking.status as BookingStatus,
-        booking.createdAt,
-        booking.updatedAt,
-        booking.slot
-          ? {
-              id: booking.slot.id,
-              startTime: booking.slot.startTime,
-              endTime: booking.slot.endTime,
-              isBooked: booking.slot.isBooked,
-              createdAt: booking.slot.createdAt,
-              updatedAt: booking.slot.updatedAt,
-            }
-          : undefined
-      );
+      return booking ? this.mapToEntity(booking) : null;
     } catch {
       return sharedMemoryStore.bookings.find((b) => b.id === id) || null;
     }
@@ -209,30 +152,35 @@ export class PrismaBookingRepository implements IBookingRepository {
         orderBy: { createdAt: 'desc' },
         include: { slot: true },
       });
-      return bookings.map(
-        (b) =>
-          new BookingEntity(
-            b.id,
-            b.slotId,
-            b.clientName,
-            b.clientEmail,
-            b.status as BookingStatus,
-            b.createdAt,
-            b.updatedAt,
-            b.slot
-              ? {
-                  id: b.slot.id,
-                  startTime: b.slot.startTime,
-                  endTime: b.slot.endTime,
-                  isBooked: b.slot.isBooked,
-                  createdAt: b.slot.createdAt,
-                  updatedAt: b.slot.updatedAt,
-                }
-              : undefined
-          )
-      );
+      return bookings.map((b) => this.mapToEntity(b));
     } catch {
       return [...sharedMemoryStore.bookings];
     }
+  }
+
+  /**
+   * دالة مساعدة مركزية لتحويل سجل الحجز من Prisma إلى كيان النطاق (BookingEntity)
+   * تمنع تكرار الكود وتضمن معالجة متسقة لجميع الحقول وعلاقة الموعد (DRY Principle)
+   */
+  private mapToEntity(b: any): BookingEntity {
+    return new BookingEntity(
+      b.id,
+      b.slotId,
+      b.clientName,
+      b.clientEmail,
+      b.status as BookingStatus,
+      b.createdAt,
+      b.updatedAt,
+      b.slot
+        ? {
+            id: b.slot.id,
+            startTime: b.slot.startTime,
+            endTime: b.slot.endTime,
+            isBooked: b.slot.isBooked,
+            createdAt: b.slot.createdAt,
+            updatedAt: b.slot.updatedAt,
+          }
+        : undefined
+    );
   }
 }
