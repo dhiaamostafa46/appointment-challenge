@@ -7,19 +7,15 @@ import path from 'path';
 import { AppModule } from './app.module';
 import { GlobalHttpExceptionFilter } from './common/filters/http-exception.filter';
 
+import { AppValidationPipe } from './common/validation/validation.pipe';
+
 export async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? '*' },
   });
 
   // Global Validation Pipe
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: false,
-    })
-  );
+  app.useGlobalPipes(new AppValidationPipe());
 
   // Global Exception Filter
   app.useGlobalFilters(new GlobalHttpExceptionFilter());

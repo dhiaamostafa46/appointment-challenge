@@ -1,12 +1,13 @@
 # Fixed-Slot Appointment Booking API (Elham Tech Challenge)
 
-A robust, production-grade RESTful API for fixed-slot appointment bookings built with **TypeScript**, **Express**, **PostgreSQL**, and **Prisma ORM**. Features strict concurrency conflict prevention, real-time status broadcasting via **Socket.IO**, and interactive **OpenAPI 3.0 / Swagger** documentation.
+A robust, production-grade RESTful API for fixed-slot appointment bookings built with **TypeScript**, **NestJS (Modular Clean Architecture)**, **PostgreSQL**, and **Prisma ORM**. Features strict concurrency conflict prevention, real-time status broadcasting via **Socket.IO**, and interactive **OpenAPI 3.0 / Swagger** documentation.
 
 ---
 
 ## Table of Contents
 
 - [Overview & Architecture](#overview--architecture)
+- [Directory Structure (Modular Clean Architecture)](#directory-structure-modular-clean-architecture)
 - [Quick Start with Docker](#quick-start-with-docker)
 - [Local Development Setup](#local-development-setup)
 - [API Documentation (Swagger UI)](#api-documentation-swagger-ui)
@@ -31,6 +32,64 @@ The system provides a clean, predictable workflow for managing fixed appointment
 
 ---
 
+## Directory Structure (Modular Clean Architecture)
+
+The codebase implements a **Lightweight Modular Clean Architecture** that separates domain entities, business use-cases, persistence infrastructure, and presentation controllers:
+
+```text
+src/
+├── modules/
+│   ├── bookings/
+│   │   ├── domain/
+│   │   │   ├── booking.entity.ts
+│   │   │   └── booking.repository.ts (Port / Interface)
+│   │   │
+│   │   ├── application/
+│   │   │   └── use-cases/
+│   │   │       ├── create-booking.use-case.ts
+│   │   │       ├── cancel-booking.use-case.ts
+│   │   │       ├── get-booking-by-id.use-case.ts
+│   │   │       └── list-bookings.use-case.ts
+│   │   │
+│   │   ├── infrastructure/
+│   │   │   └── prisma-booking.repository.ts (Adapter / PostgreSQL row-locking)
+│   │   │
+│   │   └── presentation/
+│   │       ├── bookings.controller.ts (REST & Swagger API)
+│   │       ├── bookings.gateway.ts (Socket.IO Real-time Gateway)
+│   │       └── dto/create-booking.dto.ts (Class-validator DTOs)
+│   │
+│   └── slots/
+│       ├── domain/
+│       │   ├── slot.entity.ts
+│       │   └── slot.repository.ts (Port / Interface)
+│       ├── application/
+│       │   └── use-cases/
+│       │       ├── get-available-slots.use-case.ts
+│       │       └── get-slot-by-id.use-case.ts
+│       ├── infrastructure/
+│       │   └── prisma-slot.repository.ts (Adapter)
+│       └── presentation/
+│           └── slots.controller.ts (REST & Swagger API)
+│
+├── common/
+│   ├── filters/
+│   │   └── http-exception.filter.ts (Global Domain-to-HTTP mapping)
+│   ├── errors/
+│   │   └── domain.exceptions.ts (Pure Domain Errors)
+│   └── validation/
+│       └── validation.pipe.ts (Global AppValidationPipe)
+│
+├── prisma/
+│   ├── prisma.service.ts
+│   └── prisma.module.ts
+│
+├── app.module.ts
+└── main.ts
+```
+
+---
+
 ## Quick Start with Docker
 
 The easiest way to run the database, migrations, seeds, and the API:
@@ -41,12 +100,13 @@ docker compose up --build
 
 This single command will:
 1. Start a **PostgreSQL 15** container with a healthcheck.
-2. Build the TypeScript application image.
+2. Build the TypeScript NestJS application image.
 3. Automatically execute Prisma migrations (`npm run migrate`).
 4. Automatically seed the database with available fixed slots (`npm run seed`).
 5. Start the server on `http://localhost:4000`.
 
 - **Swagger Documentation:** [http://localhost:4000/docs](http://localhost:4000/docs)
+- **Interactive Studio UI:** [http://localhost:4000/](http://localhost:4000/)
 - **Health Check:** [http://localhost:4000/health](http://localhost:4000/health)
 
 ---
@@ -86,10 +146,7 @@ npm run seed
 # Run validation unit tests (runs without database dependency)
 npm run test:unit
 
-# Run full integration and concurrency test suite against PostgreSQL
-npm run test:integration
-
-# Or run all test suites
+# Run full integration and concurrency test suite
 npm test
 ```
 
@@ -112,7 +169,6 @@ Interactive Swagger UI is accessible at:
 👉 **`http://localhost:4000/docs`**
 
 Raw OpenAPI specifications are also served at:
-- YAML: `http://localhost:4000/openapi.yaml`
 - JSON: `http://localhost:4000/openapi.json`
 
 ### Route Summary
@@ -169,8 +225,8 @@ When two or more users attempt to book the exact same slot at the same milliseco
        SELECT * FROM "Slot" WHERE id = ${input.slotId} FOR UPDATE
      `;
 
-     if (!slot) throw new SlotNotFoundError(input.slotId);
-     if (slot.isBooked) throw new SlotAlreadyBookedError(input.slotId);
+     if (!slot) throw new SlotNotFoundException(input.slotId);
+     if (slot.isBooked) throw new SlotAlreadyBookedException(input.slotId);
 
      // 2. Mark slot booked & create booking atomically
      await tx.slot.update({ where: { id: input.slotId }, data: { isBooked: true } });
@@ -179,7 +235,7 @@ When two or more users attempt to book the exact same slot at the same milliseco
    ```
    - The first transaction obtains an exclusive row lock on the target slot row.
    - Any concurrent transaction attempting to read that slot `FOR UPDATE` will block until the first transaction commits or rolls back.
-   - Once unblocked, the second transaction reads the committed state where `isBooked === true`, and immediately aborts with `SlotAlreadyBookedError` (`409 Conflict`).
+   - Once unblocked, the second transaction reads the committed state where `isBooked === true`, and immediately aborts with `SlotAlreadyBookedException` (`409 Conflict`).
 
 2. **Database-Level Partial Unique Index (Fail-Safe Defense):**
    ```sql
@@ -196,11 +252,11 @@ When two or more users attempt to book the exact same slot at the same milliseco
 
 ## Key Architectural Decisions
 
-1. **Express with Clean Separation of Concerns:**
-   - **`src/validation.ts`**: Pure functions for payload validation and sanitization.
-   - **`src/services/appointmentService.ts`**: Database interaction, transaction boundaries, and domain errors.
-   - **`src/controllers/appointmentController.ts`**: HTTP translation, input validation calls, and Socket.IO emission.
-   - **`src/index.ts`**: Server lifecycle, middleware orchestration, and centralized error mapping.
+1. **Lightweight Modular Clean Architecture:**
+   - **Domain Layer (`domain/`)**: Pure TypeScript entities and repository ports/interfaces. Decoupled from ORM or database details.
+   - **Application Layer (`application/use-cases/`)**: Encapsulates single-responsibility business workflows (`CreateBookingUseCase`, `CancelBookingUseCase`, etc.).
+   - **Infrastructure Layer (`infrastructure/`)**: Concrete implementations (`PrismaBookingRepository`, `PrismaSlotRepository`) with PostgreSQL `SELECT ... FOR UPDATE` isolation and failover capabilities.
+   - **Presentation Layer (`presentation/`)**: NestJS HTTP Controllers, class-validator DTOs with Swagger annotations, and real-time Socket.IO Gateways.
 2. **Explicit Slot Model (`Slot` + `Booking`):**
    Modeling fixed slots as distinct entities enables indexing on `startTime` and `isBooked`, keeping `GET /slots/available` high-performing ($O(1)$ indexed lookup) without table scans.
 3. **No Unnecessary Authentication / Bloat:**
