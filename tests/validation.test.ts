@@ -1,72 +1,48 @@
-import {
-  isValidEmail,
-  isValidNonEmptyString,
-  validateCreateBookingInput,
-} from '../src/validation';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import { CreateBookingDto } from '../src/modules/bookings/presentation/dto/create-booking.dto';
 
-describe('Booking Input Validation Unit Tests', () => {
-  it('validates email formats accurately', () => {
-    expect(isValidEmail('valid.user@example.com')).toBe(true);
-    expect(isValidEmail('user+tag@domain.co.uk')).toBe(true);
-    expect(isValidEmail('invalid-email')).toBe(false);
-    expect(isValidEmail('@nodomain.com')).toBe(false);
-    expect(isValidEmail('no-at-sign.com')).toBe(false);
-    expect(isValidEmail('')).toBe(false);
-    expect(isValidEmail(null)).toBe(false);
-    expect(isValidEmail(undefined)).toBe(false);
-  });
-
-  it('validates non-empty string constraints', () => {
-    expect(isValidNonEmptyString('valid string')).toBe(true);
-    expect(isValidNonEmptyString('   ')).toBe(false);
-    expect(isValidNonEmptyString('', 1)).toBe(false);
-    expect(isValidNonEmptyString('a', 2)).toBe(false); // Below min length
-    expect(isValidNonEmptyString('ab', 2)).toBe(true);
-    expect(isValidNonEmptyString(null)).toBe(false);
-  });
-
-  it('rejects invalid create booking payloads with informative error messages', () => {
-    const emptyResult = validateCreateBookingInput({});
-    expect(emptyResult.isValid).toBe(false);
-    expect(emptyResult.errors.length).toBeGreaterThan(0);
-    expect(emptyResult.errors).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('slotId is required'),
-        expect.stringContaining('clientName is required'),
-        expect.stringContaining('clientEmail is required'),
-      ])
-    );
-
-    const invalidEmailResult = validateCreateBookingInput({
-      slotId: 'uuid-1234',
-      clientName: 'Sarah Connor',
-      clientEmail: 'not-an-email',
+describe('CreateBookingDto Validation Tests', () => {
+  it('passes validation with valid data', async () => {
+    const dto = plainToInstance(CreateBookingDto, {
+      slotId: '4a2f8b50-3a1b-4f9e-9d22-123456789abc',
+      clientName: 'Ahmed Al-Mansoor',
+      clientEmail: 'ahmed@example.com',
     });
-    expect(invalidEmailResult.isValid).toBe(false);
-    expect(invalidEmailResult.errors).toContain('clientEmail is required and must be a valid email address');
+    const errors = await validate(dto);
+    expect(errors.length).toBe(0);
+  });
 
-    const shortNameResult = validateCreateBookingInput({
-      slotId: 'uuid-1234',
+  it('fails validation when slotId is missing or empty', async () => {
+    const dto = plainToInstance(CreateBookingDto, {
+      slotId: '',
+      clientName: 'Ahmed Al-Mansoor',
+      clientEmail: 'ahmed@example.com',
+    });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].property).toBe('slotId');
+  });
+
+  it('fails validation with invalid email format', async () => {
+    const dto = plainToInstance(CreateBookingDto, {
+      slotId: '4a2f8b50-3a1b-4f9e-9d22-123456789abc',
+      clientName: 'Ahmed Al-Mansoor',
+      clientEmail: 'invalid-email',
+    });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].property).toBe('clientEmail');
+  });
+
+  it('fails validation when clientName is too short', async () => {
+    const dto = plainToInstance(CreateBookingDto, {
+      slotId: '4a2f8b50-3a1b-4f9e-9d22-123456789abc',
       clientName: 'A',
-      clientEmail: 'sarah@example.com',
+      clientEmail: 'ahmed@example.com',
     });
-    expect(shortNameResult.isValid).toBe(false);
-    expect(shortNameResult.errors).toContain('clientName is required and must be between 2 and 100 characters');
-  });
-
-  it('accepts and sanitizes valid booking inputs', () => {
-    const validResult = validateCreateBookingInput({
-      slotId: '  uuid-9999  ',
-      clientName: '  John Doe  ',
-      clientEmail: '  JOHN@EXAMPLE.COM  ',
-    });
-
-    expect(validResult.isValid).toBe(true);
-    expect(validResult.errors).toHaveLength(0);
-    expect(validResult.data).toEqual({
-      slotId: 'uuid-9999',
-      clientName: 'John Doe',
-      clientEmail: 'john@example.com',
-    });
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].property).toBe('clientName');
   });
 });
