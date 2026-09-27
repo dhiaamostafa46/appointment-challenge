@@ -38,7 +38,7 @@ export async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
 
-  // Expose raw openapi.json and openapi.yaml
+  // Expose raw openapi.json
   const httpAdapter = app.getHttpAdapter();
   httpAdapter.get('/openapi.json', (_req: any, res: any) => res.json(document));
 
