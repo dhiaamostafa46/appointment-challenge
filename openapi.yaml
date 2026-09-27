@@ -1,0 +1,361 @@
+openapi: 3.0.3
+info:
+  title: Fixed-Slot Appointment Booking API
+  description: >
+    Production-grade RESTful API for fixed-slot appointment booking with real-time updates via Socket.IO,
+    strict concurrency conflict prevention using PostgreSQL row-level locks and database constraints,
+    and seed data management.
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000
+    description: Local Development / Docker Server
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns service health status and current server timestamp.
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: '2026-10-01T12:00:00.000Z'
+
+  /slots:
+    get:
+      summary: List fixed appointment slots
+      description: Returns a list of fixed appointment slots. Can filter for available slots only using the `available` query parameter.
+      parameters:
+        - name: available
+          in: query
+          required: false
+          description: If true, returns only available (unbooked) slots.
+          schema:
+            type: boolean
+            example: true
+      responses:
+        '200':
+          description: List of appointment slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Slot'
+
+  /slots/available:
+    get:
+      summary: List available slots
+      description: Convenience shortcut to list all available (unbooked) fixed slots.
+      responses:
+        '200':
+          description: List of available appointment slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Slot'
+
+  /slots/{id}:
+    get:
+      summary: Get slot by ID
+      description: Retrieves details of a specific fixed slot, including active booking if booked.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique slot ID (UUID)
+          schema:
+            type: string
+            format: uuid
+            example: 4a2f8b50-3a1b-4f9e-9d22-123456789abc
+      responses:
+        '200':
+          description: Slot found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Slot'
+        '404':
+          description: Slot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bookings:
+    post:
+      summary: Create booking for a fixed slot
+      description: >
+        Reserves a fixed slot. Uses PostgreSQL row-level locking (`SELECT ... FOR UPDATE`)
+        within an ACID transaction and partial unique database constraints to guarantee
+        that concurrent requests for the same slot never result in double booking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+            example:
+              slotId: 4a2f8b50-3a1b-4f9e-9d22-123456789abc
+              clientName: Ahmed Al-Mansoor
+              clientEmail: ahmed@example.com
+      responses:
+        '201':
+          description: Booking successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: Validation error in request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '404':
+          description: Slot does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Slot is already booked (or claimed by a concurrent request)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Slot '4a2f8b50-3a1b-4f9e-9d22-123456789abc' is already booked
+
+    get:
+      summary: List all bookings
+      description: Returns a list of all bookings in the system.
+      responses:
+        '200':
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+
+  /bookings/{id}:
+    get:
+      summary: Get booking by ID
+      description: Retrieves details of a specific booking.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Booking ID (UUID)
+          schema:
+            type: string
+            format: uuid
+            example: 8c3e1a20-5f2c-4e8a-8a11-987654321def
+      responses:
+        '200':
+          description: Booking found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Cancel a booking
+      description: >
+        Cancels an active booking, sets its status to CANCELLED, and immediately
+        makes the slot available again for future reservations. Emits real-time Socket.IO events.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Booking ID (UUID)
+          schema:
+            type: string
+            format: uuid
+            example: 8c3e1a20-5f2c-4e8a-8a11-987654321def
+      responses:
+        '200':
+          description: Booking successfully cancelled and slot re-opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelBookingResponse'
+        '400':
+          description: Booking has already been cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bookings/{id}/cancel:
+    post:
+      summary: Cancel a booking (POST alias)
+      description: Alternate POST endpoint to cancel an active booking and release the slot.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Booking ID (UUID)
+          schema:
+            type: string
+            format: uuid
+            example: 8c3e1a20-5f2c-4e8a-8a11-987654321def
+      responses:
+        '200':
+          description: Booking successfully cancelled and slot re-opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelBookingResponse'
+        '400':
+          description: Booking has already been cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Slot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 4a2f8b50-3a1b-4f9e-9d22-123456789abc
+        startTime:
+          type: string
+          format: date-time
+          example: '2026-10-05T09:00:00.000Z'
+        endTime:
+          type: string
+          format: date-time
+          example: '2026-10-05T09:30:00.000Z'
+        isBooked:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-01T08:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-10-01T08:00:00.000Z'
+
+    CreateBookingRequest:
+      type: object
+      required:
+        - slotId
+        - clientName
+        - clientEmail
+      properties:
+        slotId:
+          type: string
+          format: uuid
+          description: UUID of the slot to reserve
+          example: 4a2f8b50-3a1b-4f9e-9d22-123456789abc
+        clientName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Name of the person booking the slot
+          example: Ahmed Al-Mansoor
+        clientEmail:
+          type: string
+          format: email
+          description: Valid contact email address
+          example: ahmed@example.com
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 8c3e1a20-5f2c-4e8a-8a11-987654321def
+        slotId:
+          type: string
+          format: uuid
+          example: 4a2f8b50-3a1b-4f9e-9d22-123456789abc
+        clientName:
+          type: string
+          example: Ahmed Al-Mansoor
+        clientEmail:
+          type: string
+          format: email
+          example: ahmed@example.com
+        status:
+          type: string
+          enum: [CONFIRMED, CANCELLED]
+          example: CONFIRMED
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-10-01T10:15:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-10-01T10:15:00.000Z'
+        slot:
+          $ref: '#/components/schemas/Slot'
+
+    CancelBookingResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Booking cancelled successfully. Slot is now available for new reservations.
+        booking:
+          $ref: '#/components/schemas/Booking'
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Requested resource was not found
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Validation failed
+        details:
+          type: array
+          items:
+            type: string
+          example:
+            - clientEmail is required and must be a valid email address
